@@ -19,6 +19,11 @@
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
+// htmx + idiomorph: this app is dead views polled by htmx, not LiveView.
+// Order matters — htmx must load before the idiomorph extension, which
+// registers the "morph" swap style onto the global htmx.
+import "../vendor/htmx.min.js"
+import "../vendor/idiomorph-ext.min.js"
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
@@ -37,8 +42,9 @@ topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
-// connect if there are any LiveViews on the page
-liveSocket.connect()
+// No LiveViews on the page — leave the socket unconnected so there is no
+// persistent WebSocket. Re-enable if you add a LiveView later.
+// liveSocket.connect()
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

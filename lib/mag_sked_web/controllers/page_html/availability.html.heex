@@ -1,0 +1,35 @@
+<%!-- Rendered both inline on first paint and as the htmx poll response.
+      No #availability wrapper: the page container owns that id and htmx
+      morphs this in as its innerHTML. --%>
+<div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th class="text-base-content/60">Time</th>
+        <th :for={court <- @snapshot.courts} class="text-base-content">{court.name}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr :for={time <- slot_times(@snapshot)}>
+        <td class="font-mono text-base-content/60">{time}</td>
+        <td :for={court <- @snapshot.courts}>
+          <% slot = Enum.find(court.slots, &(&1.time == time)) %>
+          <span
+            :if={slot && slot.open}
+            class="badge badge-success badge-sm"
+            aria-label={"#{court.name} open at #{time}"}
+          >
+            open
+          </span>
+          <span :if={!slot || !slot.open} class="text-base-content/30" aria-hidden="true">
+            —
+          </span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="mt-3 text-xs text-base-content/50">
+    Updated {Calendar.strftime(@snapshot.fetched_at, "%H:%M:%S")} UTC
+  </p>
+</div>

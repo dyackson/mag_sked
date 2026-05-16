@@ -17,8 +17,9 @@ defmodule MagSkedWeb.Router do
   scope "/", MagSkedWeb do
     pipe_through :browser
 
-    # get "/", PageController, :home
-    live "/", HomeLive, :index
+    get "/", PageController, :home
+    # Polled by htmx every 60s; returns just the availability table fragment.
+    get "/availability", PageController, :availability
   end
 
   # Other scopes may use custom stacks.
