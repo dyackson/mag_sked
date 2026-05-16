@@ -17,7 +17,8 @@ defmodule MagSkedWeb.Router do
   scope "/", MagSkedWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    # get "/", PageController, :home
+    live "/", HomeLive, :index
   end
 
   # Other scopes may use custom stacks.
