@@ -35,7 +35,7 @@ defmodule MagSked.Courts do
     end
   end
 
-  @padel_court_resources [one: 127, two: 129, three: 130]
+  @padel_court_resources %{1 => 127, 2 => 129, 3 => 130}
   def fetch_availability(court) do
     with {:ok, %{body: body}} =
            Req.get(
@@ -52,7 +52,7 @@ defmodule MagSked.Courts do
         Enum.sort(avail_iso_dts)
         |> Enum.map(fn dt ->
           [date, time, _] = Regex.split(~r/[\s\.]/, dt)
-          %{date: date, time: time}
+          %{date: date, time: String.replace_suffix(time, ":00", "")}
         end)
         |> Enum.group_by(& &1.date, & &1.time)
         |> Map.new()
@@ -85,11 +85,8 @@ defmodule MagSked.Courts do
 
   def minus_30_min(time) do
     case String.split(time, ":") do
-      [h, "00", _secs] ->
-        "#{String.pad_leading(Integer.to_string(String.to_integer(h) - 1), 2, "0")}:30:00"
-
-      [h, "30", _secs] ->
-        "#{h}:00:00"
+      [h, "00"] -> "#{String.pad_leading(Integer.to_string(String.to_integer(h) - 1), 2, "0")}:30"
+      [h, "30"] -> "#{h}:00"
     end
   end
 end
