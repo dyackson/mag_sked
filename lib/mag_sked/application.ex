@@ -15,7 +15,7 @@ defmodule MagSked.Application do
       {DNSCluster, query: Application.get_env(:mag_sked, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: MagSked.PubSub},
       # Start a worker by calling: MagSked.Worker.start_link(arg)
-      # {MagSked.Worker, arg},
+      MagSked.Courts,
       # Start to serve requests, typically the last entry
       MagSkedWeb.Endpoint
     ]

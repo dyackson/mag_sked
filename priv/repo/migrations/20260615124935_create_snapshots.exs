@@ -5,9 +5,7 @@ defmodule MagSked.Repo.Migrations.CreateSnapshots do
     create table(:snapshots) do
       add :court_number, :integer
       add :times_by_date, :map
-      add :fetched_at, :utc_datetime
-
-      timestamps(type: :utc_datetime)
+      timestamps(type: :utc_datetime, updated_at: false)
     end
   end
 end

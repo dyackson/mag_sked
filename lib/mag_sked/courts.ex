@@ -1,7 +1,4 @@
 defmodule MagSked.Courts do
-  # use GensServer
-
-  # @impl true
   @moduledoc """
   Read API for current court availability.
 
@@ -15,6 +12,38 @@ defmodule MagSked.Courts do
   @type slot :: %{time: String.t(), open: boolean()}
   @type court :: %{name: String.t(), slots: [slot()]}
   @type snapshot :: %{fetched_at: DateTime.t(), courts: [court()]}
+
+  use GenServer
+
+  require Logger
+
+  alias MagSked.Courts.Snapshot
+
+  # called by the supervisor
+  def start_link(arg) do
+    # start a GenServer process using the callback in this module
+    GenServer.start_link(__MODULE__, arg, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_arg \\ nil) do
+    :ets.new(:cache, [:named_table, :set, :public, read_concurrency: true])
+    state_from_db = Snapshot.get_latest()
+
+    for court_num <- [1, 2, 3], avail_for_court = state_from_db[court_num] do
+      :ets.insert(:cache, {court_num, avail_for_court})
+    end
+
+    send(self(), :fetch_courts)
+
+    {:ok, :starting}
+  end
+
+  def current() do
+    for i <- [1, 2, 3], [{^i, avail}] = :ets.lookup(:cache, i), into: %{} do
+      {i, avail}
+    end
+  end
 
   @spec snapshot() :: snapshot()
   def snapshot do
@@ -35,22 +64,52 @@ defmodule MagSked.Courts do
     end
   end
 
+  def handle_info(:fetch_courts, state) do
+    for court_num <- [1, 2, 3] do
+      case fetch_availability(court_num) do
+        {:error, _} -> :error
+        {:ok, avail} -> :ets.insert(:cache, {court_num, avail})
+      end
+    end
+
+    # populate the cache
+    if state == :starting, do: send(self(), :write_ets_to_db)
+
+    Process.send_after(self(), :fetch_courts, 60 * 1000)
+
+    {:noreply, nil}
+  end
+
+  def handle_info(:write_ets_to_db, state) do
+    for court_num <- [1, 2, 3],
+        [{^court_num, avail}] = :ets.lookup(:cache, court_num) do
+      Snapshot.save(court_num, avail)
+    end
+
+    Process.send_after(self(), :write_ets_to_db, :timer.minutes(5))
+
+    {:noreply, state}
+  end
+
+
   @padel_court_resources %{1 => 127, 2 => 129, 3 => 130}
   def fetch_availability(court) do
-    with {:ok, %{body: body}} =
+    Logger.info("fetching court #{court}")
+
+    with {:ok, %{body: body}} <-
            Req.get(
              "https://simplifica.madeira.gov.pt/api/infoProcess/32/resources/#{@padel_court_resources[court]}/configuration"
            ) do
-      # dbg(body["data"]["details"]["name"])
-
       avail_iso_dts =
         for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- body["data"]["intervals"] do
           iso_dt
         end
 
-      dbg(avail_iso_dts)
-
-      avail_blocks_by_date(avail_iso_dts)
+      {:ok, avail_blocks_by_date(avail_iso_dts)}
+    else
+      {:error, reason} ->
+        Logger.error("Failed to fetch court #{court}: #{inspect(reason)}")
+        {:error, :fetch_error}
     end
   end
 
