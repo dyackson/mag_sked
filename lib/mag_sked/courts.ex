@@ -13,6 +13,15 @@ defmodule MagSked.Courts do
   @type court :: %{name: String.t(), slots: [slot()]}
   @type snapshot :: %{fetched_at: DateTime.t(), courts: [court()]}
 
+  @type time :: String.t()
+  @type span :: [time()]
+  @type spans :: [span()]
+  @type day :: String.t()
+  @type avail :: %{day() => spans()}
+  @type courtn :: 1..3
+  @type court_avail :: %{courtn() => avail()}
+  @type lookup_map :: %{day() => %{time() => %{courtn() => true}}
+
   use GenServer
 
   require Logger
@@ -45,6 +54,17 @@ defmodule MagSked.Courts do
     end
   end
 
+  @spec avail_lookup_map(court_avail()) :: lookup_map()
+  def avail_lookup_map(court_avail) do
+    for {court, avail_by_date} <- court_avail,
+        {date, spans} <- avail_by_date,
+        span <- spans,
+        time <- span,
+        reduce: %{} do
+      acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{})], %{court => true})
+    end
+  end
+
   @spec snapshot() :: snapshot()
   def snapshot do
     %{
@@ -64,6 +84,7 @@ defmodule MagSked.Courts do
     end
   end
 
+  @impl true
   def handle_info(:fetch_courts, state) do
     for court_num <- [1, 2, 3] do
       case fetch_availability(court_num) do
@@ -75,11 +96,12 @@ defmodule MagSked.Courts do
     # populate the cache
     if state == :starting, do: send(self(), :write_ets_to_db)
 
-    Process.send_after(self(), :fetch_courts, 60 * 1000)
+    Process.send_after(self(), :fetch_courts, :timer.minutes(1))
 
     {:noreply, nil}
   end
 
+  @impl true
   def handle_info(:write_ets_to_db, state) do
     for court_num <- [1, 2, 3],
         [{^court_num, avail}] = :ets.lookup(:cache, court_num) do
@@ -90,7 +112,6 @@ defmodule MagSked.Courts do
 
     {:noreply, state}
   end
-
 
   @padel_court_resources %{1 => 127, 2 => 129, 3 => 130}
   def fetch_availability(court) do
