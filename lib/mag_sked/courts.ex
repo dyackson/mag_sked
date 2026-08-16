@@ -1,17 +1,7 @@
 defmodule MagSked.Courts do
   @moduledoc """
   Read API for current court availability.
-
-  Placeholder for now: returns static sample data. A GenServer will poll
-  the upstream booking site every minute and cache the latest snapshot
-  (in its own state / ETS / :persistent_term); `snapshot/0` just reads
-  that cache, so this function stays cheap and synchronous and the web
-  layer never talks to the upstream site directly.
   """
-
-  @type slot :: %{time: String.t(), open: boolean()}
-  @type court :: %{name: String.t(), slots: [slot()]}
-  @type snapshot :: %{fetched_at: DateTime.t(), courts: [court()]}
 
   @type time :: String.t()
   @type span :: [time()]
@@ -20,7 +10,7 @@ defmodule MagSked.Courts do
   @type avail :: %{day() => spans()}
   @type courtn :: 1..3
   @type court_avail :: %{courtn() => avail()}
-  @type lookup_map :: %{day() => %{time() => %{courtn() => true}}
+  @type lookup_map :: %{day() => [{time(), %{courtn() => true}}]}
 
   use GenServer
 
@@ -56,31 +46,67 @@ defmodule MagSked.Courts do
 
   @spec avail_lookup_map(court_avail()) :: lookup_map()
   def avail_lookup_map(court_avail) do
-    for {court, avail_by_date} <- court_avail,
-        {date, spans} <- avail_by_date,
-        span <- spans,
-        time <- span,
-        reduce: %{} do
-      acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{})], %{court => true})
+    nested_map =
+      for {court, avail_by_date} <- court_avail,
+          {date, spans} <- avail_by_date,
+          span <- spans,
+          time <- span,
+          reduce: %{} do
+        acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{}), court], true)
+      end
+
+    # convert the maps that have times as keys to {time, avail} lists so they're ordered
+    for {date, times_map} <- nested_map, into: %{} do
+      sorted_times = Enum.sort_by(times_map, fn {time, _avail} -> time end)
+
+      grouped_reversed_times =
+        for {time, _avail} = curr <- sorted_times, prev_time = minus_30_min(time), reduce: [] do
+          # keep adding to the previous group
+          [[{^prev_time, _} | _] = current_group | earlier_groups] ->
+            [[curr | current_group] | earlier_groups]
+
+          # start a new group
+          list ->
+            [[curr] | list]
+        end
+
+      # have to reverse the nested lists and the outer one
+      grouped_times = Enum.map(grouped_reversed_times, &Enum.reverse(&1)) |> Enum.reverse()
+
+      {date, grouped_times}
     end
   end
 
-  @spec snapshot() :: snapshot()
-  def snapshot do
-    %{
-      fetched_at: DateTime.utc_now(),
-      courts: [
-        %{name: "Court 1", slots: sample(~w(08:00 09:00 14:00))},
-        %{name: "Court 2", slots: sample(~w(11:00))},
-        %{name: "Court 3", slots: sample([])},
-        %{name: "Court 4", slots: sample(~w(08:00 16:00 17:00 18:00))}
-      ]
-    }
+  def possible_times do
+    for h <- 9..21, min <- ["00", "30"] do
+      "#{String.pad_leading(Integer.to_string(h), 2, "0")}:#{min}"
+    end
   end
 
-  defp sample(open_times) do
-    for t <- ~w(08:00 09:00 10:00 11:00 14:00 16:00 17:00 18:00) do
-      %{time: t, open: t in open_times}
+  # 1-indexed starting on monday
+  @day_names_by_dow %{
+    1 => "Mon",
+    2 => "Tue",
+    3 => "Wed",
+    4 => "Thu",
+    5 => "Fri",
+    6 => "Sat",
+    7 => "Sun"
+  }
+
+  def snapshot do
+    lookup_map =
+      current()
+      |> avail_lookup_map()
+
+    today = Date.utc_today()
+
+    for n <- 0..7 do
+      date = Date.add(today, n)
+      date_str = Date.to_string(date)
+      dow = Date.day_of_week(date)
+
+      %{date: date, dow_text: @day_names_by_dow[dow], avail: lookup_map[date_str]}
     end
   end
 
