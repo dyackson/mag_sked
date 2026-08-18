@@ -19,15 +19,16 @@ defmodule MagSkedWeb.ConnCase do
 
   using do
     quote do
-      # The default endpoint for testing
-      @endpoint MagSkedWeb.Endpoint
-
       use MagSkedWeb, :verified_routes
+
+      import MagSkedWeb.ConnCase
+      import Phoenix.ConnTest
 
       # Import conveniences for testing with connections
       import Plug.Conn
-      import Phoenix.ConnTest
-      import MagSkedWeb.ConnCase
+
+      # The default endpoint for testing
+      @endpoint MagSkedWeb.Endpoint
     end
   end
 

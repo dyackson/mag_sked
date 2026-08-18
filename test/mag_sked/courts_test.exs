@@ -1,7 +1,9 @@
 defmodule MagSked.CourtsTest do
   use MagSked.DataCase
+
   alias MagSked.Courts
-  doctest MagSked.Courts
+
+  doctest Courts
 
   test "avail_to_lookup/1" do
     court_avail = %{

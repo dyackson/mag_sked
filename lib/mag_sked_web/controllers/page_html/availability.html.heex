@@ -3,8 +3,7 @@
       morphs this in as its innerHTML. --%>
 <div>
   <table class="table font-mono">
-    <thead>
-    </thead>
+    <thead></thead>
     <tbody>
       <%= for %{date: date, dow_text: dow_text, avail: avail} <- @snapshot do %>
         <tr class="border-none">
@@ -32,10 +31,10 @@
             <td colspan="3" class="p-2 m-0 text-center"></td>
           </tr>
         <% end %>
-          <tr  class="">
-            <td class="p-0 m-0"></td>
-            <td colspan="3" class="py-4 m-0 text-center"></td>
-          </tr>
+        <tr class="">
+          <td class="p-0 m-0"></td>
+          <td colspan="3" class="py-4 m-0 text-center"></td>
+        </tr>
       <% end %>
     </tbody>
   </table>

@@ -3,6 +3,12 @@ defmodule MagSked.Courts do
   Read API for current court availability.
   """
 
+  use GenServer
+
+  alias MagSked.Courts.Snapshot
+
+  require Logger
+
   @type time :: String.t()
   @type span :: [time()]
   @type spans :: [span()]
@@ -11,12 +17,6 @@ defmodule MagSked.Courts do
   @type courtn :: 1..3
   @type court_avail :: %{courtn() => avail()}
   @type lookup_map :: %{day() => [{time(), %{courtn() => true}}]}
-
-  use GenServer
-
-  require Logger
-
-  alias MagSked.Courts.Snapshot
 
   # called by the supervisor
   def start_link(arg) do
@@ -38,7 +38,7 @@ defmodule MagSked.Courts do
     {:ok, :starting}
   end
 
-  def current() do
+  def current do
     for i <- [1, 2, 3], [{^i, avail}] = :ets.lookup(:cache, i), into: %{} do
       {i, avail}
     end
@@ -71,7 +71,7 @@ defmodule MagSked.Courts do
         end
 
       # have to reverse the nested lists and the outer one
-      grouped_times = Enum.map(grouped_reversed_times, &Enum.reverse(&1)) |> Enum.reverse()
+      grouped_times = grouped_reversed_times |> Enum.map(&Enum.reverse(&1)) |> Enum.reverse()
 
       {date, grouped_times}
     end
@@ -95,9 +95,7 @@ defmodule MagSked.Courts do
   }
 
   def snapshot do
-    lookup_map =
-      current()
-      |> avail_lookup_map()
+    lookup_map = avail_lookup_map(current())
 
     today = Date.utc_today()
 
@@ -122,7 +120,7 @@ defmodule MagSked.Courts do
     # populate the cache
     if state == :starting, do: send(self(), :write_ets_to_db)
 
-    Process.send_after(self(), :fetch_courts, :timer.minutes(1))
+    Process.send_after(self(), :fetch_courts, to_timeout(minute: 1))
 
     {:noreply, nil}
   end
@@ -134,7 +132,7 @@ defmodule MagSked.Courts do
       Snapshot.save(court_num, avail)
     end
 
-    Process.send_after(self(), :write_ets_to_db, :timer.minutes(5))
+    Process.send_after(self(), :write_ets_to_db, to_timeout(minute: 5))
 
     {:noreply, state}
   end
@@ -143,17 +141,17 @@ defmodule MagSked.Courts do
   def fetch_availability(court) do
     Logger.info("fetching court #{court}")
 
-    with {:ok, %{body: body}} <-
-           Req.get(
-             "https://simplifica.madeira.gov.pt/api/infoProcess/32/resources/#{@padel_court_resources[court]}/configuration"
-           ) do
-      avail_iso_dts =
-        for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- body["data"]["intervals"] do
-          iso_dt
-        end
+    case Req.get(
+           "https://simplifica.madeira.gov.pt/api/infoProcess/32/resources/#{@padel_court_resources[court]}/configuration"
+         ) do
+      {:ok, %{body: body}} ->
+        avail_iso_dts =
+          for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- body["data"]["intervals"] do
+            iso_dt
+          end
 
-      {:ok, avail_blocks_by_date(avail_iso_dts)}
-    else
+        {:ok, avail_blocks_by_date(avail_iso_dts)}
+
       {:error, reason} ->
         Logger.error("Failed to fetch court #{court}: #{inspect(reason)}")
         {:error, :fetch_error}
@@ -179,7 +177,8 @@ defmodule MagSked.Courts do
   """
   def avail_blocks_by_date(avail_iso_dts) do
     avail_times_by_date =
-      Enum.sort(avail_iso_dts)
+      avail_iso_dts
+      |> Enum.sort()
       |> Enum.map(fn dt ->
         [date, time | _] = Regex.split(~r/[\s\.]/, dt)
         %{date: date, time: String.replace_suffix(time, ":00", "")}

@@ -1,4 +1,5 @@
 defmodule MagSked.Courts.Snapshot do
+  @moduledoc false
   use Ecto.Schema
 
   import Ecto.Changeset

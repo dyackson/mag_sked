@@ -7,9 +7,29 @@
 # General application configuration
 import Config
 
-config :mag_sked,
-  ecto_repos: [MagSked.Repo],
-  generators: [timestamp_type: :utc_datetime]
+# Configure esbuild (the version is required)
+config :esbuild,
+  version: "0.25.4",
+  mag_sked: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+  ]
+
+# Configure Elixir's Logger
+config :logger, :default_formatter,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id]
+
+# Configure the mailer
+#
+# By default it uses the "Local" adapter which stores the emails
+# locally. You can see the emails in your browser, at "/dev/mailbox".
+#
+# For production it's recommended to configure a different adapter
+# at the `config/runtime.exs`.
+config :mag_sked, MagSked.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure the endpoint
 config :mag_sked, MagSkedWeb.Endpoint,
@@ -22,24 +42,12 @@ config :mag_sked, MagSkedWeb.Endpoint,
   pubsub_server: MagSked.PubSub,
   live_view: [signing_salt: "krD4UBLZ"]
 
-# Configure the mailer
-#
-# By default it uses the "Local" adapter which stores the emails
-# locally. You can see the emails in your browser, at "/dev/mailbox".
-#
-# For production it's recommended to configure a different adapter
-# at the `config/runtime.exs`.
-config :mag_sked, MagSked.Mailer, adapter: Swoosh.Adapters.Local
+config :mag_sked,
+  ecto_repos: [MagSked.Repo],
+  generators: [timestamp_type: :utc_datetime]
 
-# Configure esbuild (the version is required)
-config :esbuild,
-  version: "0.25.4",
-  mag_sked: [
-    args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
+# Use Jason for JSON parsing in Phoenix
+config :phoenix, :json_library, Jason
 
 # Configure tailwind (the version is required)
 config :tailwind,
@@ -51,14 +59,6 @@ config :tailwind,
     ),
     cd: Path.expand("..", __DIR__)
   ]
-
-# Configure Elixir's Logger
-config :logger, :default_formatter,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
-
-# Use Jason for JSON parsing in Phoenix
-config :phoenix, :json_library, Jason
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
