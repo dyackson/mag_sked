@@ -16,11 +16,17 @@
         </tr>
         <%= for {block, i} <- Enum.with_index(avail || []) do %>
           <%= for {time, courts} <- block do %>
+            <% bookable =
+              DateTime.before?(
+                DateTime.new!(date, Time.from_iso8601!(time <> ":00"), "Europe/Lisbon"),
+                @one_week_away
+              ) %>
+            <% badge_class = if bookable, do: "badge badge-success", else: "badge badge-neutral" %>
             <tr class="border-none">
-              <td class="py-0"></td>
+              <td class="py-0 text-center"></td>
               <%= for n <- 1..3 do %>
-                <td class="py-0">
-                  <span :if={courts[n]} class="badge badge-success">{time}</span>
+                <td class="py-0 text-center">
+                  <span :if={courts[n]} class={badge_class}>{time}</span>
                 </td>
               <% end %>
             </tr>

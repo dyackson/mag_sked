@@ -61,7 +61,8 @@ defmodule MagSked.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.12"},
-      {:styler, "~> 1.2", only: [:dev, :test], runtime: false}
+      {:styler, "~> 1.2", only: [:dev, :test], runtime: false},
+      {:tz, "~> 0.28"}
     ]
   end
 

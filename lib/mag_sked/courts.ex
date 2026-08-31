@@ -5,6 +5,7 @@ defmodule MagSked.Courts do
 
   use GenServer
 
+  alias MagSked.Courts.DateWindow
   alias MagSked.Courts.Snapshot
 
   require Logger
@@ -33,9 +34,11 @@ defmodule MagSked.Courts do
       :ets.insert(:cache, {court_num, avail_for_court})
     end
 
-    send(self(), :fetch_courts)
+    with {:ok, date_window} <- dbg(DateWindow.get()), do: :ets.insert(:cache, {:date_window, date_window})
 
-    {:ok, :starting}
+    send(self(), {:fetch_courts, save_to_db?: true})
+
+    {:ok, nil}
   end
 
   def current do
@@ -97,10 +100,20 @@ defmodule MagSked.Courts do
   def snapshot do
     lookup_map = avail_lookup_map(current())
 
-    today = Date.utc_today()
+    date_window =
+      case :ets.lookup(:cache, :date_window) do
+        [date_window: date_window] ->
+          date_window
 
-    for n <- 0..7 do
-      date = Date.add(today, n)
+        _ ->
+          Logger.error("date_window not in ets, falling back to 8 days starting today")
+          %DateWindow{first: Date.utc_today(), last: Date.add(Date.utc_today(), 7)}
+      end
+
+    more_days = Date.diff(date_window.last, date_window.first)
+
+    for n <- 0..more_days do
+      date = Date.add(date_window.first, n)
       date_str = Date.to_string(date)
       dow = Date.day_of_week(date)
 
@@ -109,20 +122,37 @@ defmodule MagSked.Courts do
   end
 
   @impl true
-  def handle_info(:fetch_courts, state) do
+  def handle_info({:fetch_courts, save_to_db?: save_to_db?}, state) do
     for court_num <- [1, 2, 3] do
       case fetch_availability(court_num) do
-        {:error, _} -> :error
-        {:ok, avail} -> :ets.insert(:cache, {court_num, avail})
+        {:error, _} ->
+          :error
+
+        {:ok, avail, %DateWindow{first: f1, last: l1} = new_window}  ->
+          # populate the cache
+          :ets.insert(:cache, {court_num, avail})
+
+          date_window =
+            case :ets.lookup(:cache, :date_window) do
+              [] ->
+                new_window
+
+              [date_window: %DateWindow{first: f0, last: l0}] ->
+                %DateWindow{
+                  first: if(Date.after?(f0, f1), do: f0, else: f1),
+                  last: if(Date.after?(l0, l1), do: l0, else: l1)
+                }
+            end
+
+          :ets.insert(:cache, {:date_window, date_window})
       end
     end
 
-    # populate the cache
-    if state == :starting, do: send(self(), :write_ets_to_db)
+    if save_to_db?, do: send(self(), :write_ets_to_db)
 
-    Process.send_after(self(), :fetch_courts, to_timeout(minute: 1))
+    Process.send_after(self(), {:fetch_courts, save_to_db?: false}, to_timeout(minute: 1))
 
-    {:noreply, nil}
+    {:noreply, state}
   end
 
   @impl true
@@ -132,25 +162,101 @@ defmodule MagSked.Courts do
       Snapshot.save(court_num, avail)
     end
 
-    Process.send_after(self(), :write_ets_to_db, to_timeout(minute: 5))
+    with [date_window: dw] <- :ets.lookup(:cache, :date_window) do
+      DateWindow.save(dw.first, dw.last)
+    end
+
+    Process.send_after(self(), :write_ets_to_db, to_timeout(minute: 15))
 
     {:noreply, state}
+  end
+
+  defp headers_for_post(get_resp_headers) do
+    cookie_map =
+      for cookie_header <- get_resp_headers["set-cookie"] || [], into: %{} do
+        [token_pair | _expiration_etc] = String.split(cookie_header, ";")
+        [name, val] = String.split(token_pair, "=", parts: 2)
+        {String.trim(name), String.trim(val)}
+      end
+
+    laravel_session = cookie_map["laravel_session"]
+    xsrf_token_raw = cookie_map["XSRF-TOKEN"]
+    xsrf_token_decoded = URI.decode(xsrf_token_raw || "")
+
+    cookie_header = "laravel_session=#{laravel_session}; XSRF-TOKEN=#{xsrf_token_raw}"
+
+    [
+      {"cookie", cookie_header},
+      {"x-xsrf-token", xsrf_token_decoded},
+      {"accept", "application/json"}
+    ]
   end
 
   @padel_court_resources %{1 => 127, 2 => 129, 3 => 130}
   def fetch_availability(court) do
     Logger.info("fetching court #{court}")
 
+    # the /configuration endpoint only returns intervals for today and the next 4 days
     case Req.get(
            "https://simplifica.madeira.gov.pt/api/infoProcess/32/resources/#{@padel_court_resources[court]}/configuration"
          ) do
-      {:ok, %{body: body}} ->
+      {:ok, %{body: %{"data" => %{"intervals" => [_ | _] = initial_intervals}}, headers: get_resp_headers}} ->
+        # fetch 3 more days of intervals from the POST /intervals endpoint
+        last_results_day =
+          initial_intervals
+          |> Enum.map(& &1["begin"]["date"])
+          |> Enum.sort()
+          |> List.last()
+          |> String.split()
+          |> List.first()
+          |> Date.from_iso8601!()
+
+        post_headers = headers_for_post(get_resp_headers)
+
+        intervals =
+          for days <- 1..3, reduce: initial_intervals do
+            acc ->
+              date = Date.add(last_results_day, days)
+
+              case Req.post("https://simplifica.madeira.gov.pt/api/resources/intervals",
+                     json: %{
+                       resourceId: @padel_court_resources[court],
+                       year: date.year,
+                       month: date.month,
+                       day: date.day
+                     },
+                     headers: post_headers
+                   ) do
+                {:ok, %{body: %{"data" => [_ | _] = intervals}}} ->
+                  acc ++ intervals
+
+                {:ok, other} ->
+                  Logger.error("single-day response lacks intervals #{court}, #{date}: #{inspect(other)}")
+                  acc
+
+                {:error, reason} ->
+                  Logger.error("Failed to fetch court #{court}, #{date}: #{inspect(reason)}")
+                  acc
+              end
+          end
+
+        # the UI needs to know the bounding dates of the results, court 1 is chosen arbitrarily
+        sorted_iso_date_strings = intervals |> Enum.map(& &1["begin"]["date"]) |> Enum.sort()
+
+        # get a list half-hour datetimes that are still available (not yet reserved)
         avail_iso_dts =
-          for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- body["data"]["intervals"] do
+          for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- intervals do
             iso_dt
           end
 
-        {:ok, avail_blocks_by_date(avail_iso_dts)}
+        first_date = sorted_iso_date_strings |> List.first() |> String.split() |> List.first() |> Date.from_iso8601!()
+        last_date = sorted_iso_date_strings |> List.last() |> String.split() |> List.first() |> Date.from_iso8601!()
+
+        {:ok, avail_blocks_by_date(avail_iso_dts), %DateWindow{first: first_date, last: last_date}}
+
+      {:ok, other} ->
+        Logger.error("response lacks intervals #{court}: #{inspect(other)}")
+        {:error, :fetch_error}
 
       {:error, reason} ->
         Logger.error("Failed to fetch court #{court}: #{inspect(reason)}")
@@ -175,6 +281,7 @@ defmodule MagSked.Courts do
     ...> ]) # <- 18:30 will be filtered out
     %{"2026-08-07" => [["13:30", "14:00"]], "2026-08-08" => [["14:00", "14:30", "15:00"], ["20:00", "20:30"]]}
   """
+  @spec avail_blocks_by_date([String.t()]) :: avail()
   def avail_blocks_by_date(avail_iso_dts) do
     avail_times_by_date =
       avail_iso_dts

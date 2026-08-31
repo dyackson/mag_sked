@@ -7,6 +7,8 @@
 # General application configuration
 import Config
 
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
