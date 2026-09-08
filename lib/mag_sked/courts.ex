@@ -128,7 +128,7 @@ defmodule MagSked.Courts do
         {:error, _} ->
           :error
 
-        {:ok, avail, %DateWindow{first: f1, last: l1} = new_window}  ->
+        {:ok, avail, %DateWindow{first: f1, last: l1} = new_window} ->
           # populate the cache
           :ets.insert(:cache, {court_num, avail})
 
@@ -201,7 +201,7 @@ defmodule MagSked.Courts do
            "https://simplifica.madeira.gov.pt/api/infoProcess/32/resources/#{@padel_court_resources[court]}/configuration"
          ) do
       {:ok, %{body: %{"data" => %{"intervals" => [_ | _] = initial_intervals}}, headers: get_resp_headers}} ->
-        # fetch 3 more days of intervals from the POST /intervals endpoint
+        # fetch more days of intervals from the POST /intervals endpoint
         last_results_day =
           initial_intervals
           |> Enum.map(& &1["begin"]["date"])
@@ -214,7 +214,7 @@ defmodule MagSked.Courts do
         post_headers = headers_for_post(get_resp_headers)
 
         intervals =
-          for days <- 1..3, reduce: initial_intervals do
+          for days <- 1..7, reduce: initial_intervals do
             acc ->
               date = Date.add(last_results_day, days)
 
@@ -240,14 +240,14 @@ defmodule MagSked.Courts do
               end
           end
 
-        # the UI needs to know the bounding dates of the results, court 1 is chosen arbitrarily
-        sorted_iso_date_strings = intervals |> Enum.map(& &1["begin"]["date"]) |> Enum.sort()
-
         # get a list half-hour datetimes that are still available (not yet reserved)
         avail_iso_dts =
           for %{"reservations" => 0, "begin" => %{"date" => iso_dt}} <- intervals do
             iso_dt
           end
+
+        # the UI needs to know the bounding dates of the results, court 1 is chosen arbitrarily
+        sorted_iso_date_strings = intervals |> Enum.map(& &1["begin"]["date"]) |> Enum.sort()
 
         first_date = sorted_iso_date_strings |> List.first() |> String.split() |> List.first() |> Date.from_iso8601!()
         last_date = sorted_iso_date_strings |> List.last() |> String.split() |> List.first() |> Date.from_iso8601!()
