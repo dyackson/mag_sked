@@ -34,7 +34,10 @@ defmodule MagSked.Courts do
       :ets.insert(:cache, {court_num, avail_for_court})
     end
 
-    with {:ok, date_window} <- dbg(DateWindow.get()), do: :ets.insert(:cache, {:date_window, date_window})
+    case DateWindow.get() do
+      %DateWindow{} = date_window -> :ets.insert(:cache, {:date_window, date_window})
+      other -> Logger.error("date window not in db, could not insert into ets")
+    end
 
     send(self(), {:fetch_courts, save_to_db?: true})
 
@@ -166,7 +169,7 @@ defmodule MagSked.Courts do
       DateWindow.save(dw.first, dw.last)
     end
 
-    Process.send_after(self(), :write_ets_to_db, to_timeout(minute: 15))
+    Process.send_after(self(), :write_ets_to_db, to_timeout(minute: 30))
 
     {:noreply, state}
   end
@@ -214,7 +217,7 @@ defmodule MagSked.Courts do
         post_headers = headers_for_post(get_resp_headers)
 
         intervals =
-          for days <- 1..7, reduce: initial_intervals do
+          for days <- 1..9, reduce: initial_intervals do
             acc ->
               date = Date.add(last_results_day, days)
 
