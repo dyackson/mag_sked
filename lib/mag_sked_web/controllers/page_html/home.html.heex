@@ -10,15 +10,15 @@
     <p class="mt-1 text-sm text-base-content/60">
       refreshes every minute
     </p>
-    <div class="flex flex-row gap-2">
+    <div class="flex flex-row gap-2 justify-around py-4">
       <div class="badge badge-success flex flex-col h-auto py-0 font-mono">
         <div>start</div>
         <div>end</div>
       </div>
 
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-2 items-center">
         <div class="badge badge-success py-0 font-mono">
-          can resere now
+          can reserve now
         </div>
         <div class="badge badge-secondary py-0 font-mono">
           cannot reserve yet
@@ -33,7 +33,7 @@
           the timestamp don't flicker. --%>
     <div
       id="availability"
-      class="mt-6 overflow-x-auto"
+      class="mt-2 overflow-x-auto"
       hx-get={~p"/availability"}
       hx-trigger="every 60s, visibilitychange[document.visibilityState=='visible'] from:document"
       hx-ext="morph"

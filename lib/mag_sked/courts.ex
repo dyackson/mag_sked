@@ -110,7 +110,6 @@ defmodule MagSked.Courts do
 
   def snapshot do
     lookup_map = avail_lookup_map(current())
-    dbg(lookup_map)
 
     date_window =
       case :ets.lookup(:cache, :date_window) do
@@ -255,7 +254,6 @@ defmodule MagSked.Courts do
 
         first_date = sorted_iso_date_strings |> List.first() |> String.split() |> List.first() |> Date.from_iso8601!()
         last_date = sorted_iso_date_strings |> List.last() |> String.split() |> List.first() |> Date.from_iso8601!()
-        dbg(last_date)
 
         {:ok, avail_blocks_by_date(avail_iso_dts), %DateWindow{first: first_date, last: last_date}}
 
