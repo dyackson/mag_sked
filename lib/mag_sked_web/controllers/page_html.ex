@@ -16,6 +16,11 @@ defmodule MagSkedWeb.PageHTML do
     |> Enum.sort()
   end
 
+  @doc "makes single digit months or days-of-month two digit strings"
+  def two_digit(int) when is_integer(int) and int >= 0 and int < 100 do
+    int |> to_string() |> String.pad_leading(2, "0")
+  end
+
   @doc """
   Light/dark/system toggle for dead views.
 

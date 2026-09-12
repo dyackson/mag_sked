@@ -8,7 +8,7 @@
       <%= for %{date: date, dow_text: dow_text, avail: avail} <- @snapshot do %>
         <tr class="border-none">
           <td class="font-mono text-base-content/60">
-            {"#{dow_text} (#{date.month}/#{date.day})"}
+            {"#{dow_text} (#{two_digit(date.day)}.#{two_digit(date.month)})"}
           </td>
           <td class="py-0 text-center">1</td>
           <td class="py-0 text-center">2</td>
@@ -21,12 +21,38 @@
                 DateTime.new!(date, Time.from_iso8601!(time <> ":00"), "Europe/Lisbon"),
                 @one_week_away
               ) %>
-            <% badge_class = if bookable, do: "badge badge-success", else: "badge badge-neutral" %>
+            <% badge_class = if bookable, do: "badge badge-success", else: "badge badge-secondary" %>
             <tr class="border-none">
-              <td class="py-0 text-center"></td>
+              <td class="py-0 text-center leading-none"></td>
               <%= for n <- 1..3 do %>
                 <td class="py-0 text-center">
-                  <span :if={courts[n]} class={badge_class}>{time}</span>
+                  <% show = courts[n] %>
+                  <span
+                    :if={show}
+                    class={[
+                      badge_class,
+                      show in [:mid, :last] and "-mt-1",
+                      show == :first and "rounded-b-none",
+                      show == :mid and "rounded-none",
+                      show == :last and "rounded-t-none"
+                    ]}
+                  >
+                    <span class="">
+                      {case show do
+                        :first ->
+                          time
+
+                        :last ->
+                          Time.from_iso8601!(time <> ":00")
+                          |> Time.shift(minute: 30)
+                          |> to_string()
+                          |> String.slice(0, 5)
+
+                        :mid ->
+                          "\u00A0\u00A0\u00A0\u00A0\u00A0"
+                      end}
+                    </span>
+                  </span>
                 </td>
               <% end %>
             </tr>

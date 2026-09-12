@@ -34,9 +34,10 @@ defmodule MagSked.Courts do
       :ets.insert(:cache, {court_num, avail_for_court})
     end
 
-    case DateWindow.get() do
-      %DateWindow{} = date_window -> :ets.insert(:cache, {:date_window, date_window})
-      other -> Logger.error("date window not in db, could not insert into ets")
+    if date_window = DateWindow.get() do
+      :ets.insert(:cache, {:date_window, date_window})
+    else
+      Logger.error("date window not in db, could not insert into ets")
     end
 
     send(self(), {:fetch_courts, save_to_db?: true})
@@ -56,9 +57,16 @@ defmodule MagSked.Courts do
       for {court, avail_by_date} <- court_avail,
           {date, spans} <- avail_by_date,
           span <- spans,
-          time <- span,
+          span_length = length(span),
+          {time, span_index} <- Enum.with_index(span),
+          place =
+            (cond do
+               span_index == 0 -> :first
+               span_index == span_length - 1 -> :last
+               true -> :mid
+             end),
           reduce: %{} do
-        acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{}), court], true)
+        acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{}), court], place)
       end
 
     # convert the maps that have times as keys to {time, avail} lists so they're ordered
@@ -102,6 +110,7 @@ defmodule MagSked.Courts do
 
   def snapshot do
     lookup_map = avail_lookup_map(current())
+    dbg(lookup_map)
 
     date_window =
       case :ets.lookup(:cache, :date_window) do
@@ -109,8 +118,8 @@ defmodule MagSked.Courts do
           date_window
 
         _ ->
-          Logger.error("date_window not in ets, falling back to 8 days starting today")
-          %DateWindow{first: Date.utc_today(), last: Date.add(Date.utc_today(), 7)}
+          Logger.error("date_window not in ets, falling back to 12 days starting today")
+          %DateWindow{first: Date.utc_today(), last: Date.add(Date.utc_today(), 11)}
       end
 
     more_days = Date.diff(date_window.last, date_window.first)
@@ -120,7 +129,7 @@ defmodule MagSked.Courts do
       date_str = Date.to_string(date)
       dow = Date.day_of_week(date)
 
-      %{date: date, dow_text: @day_names_by_dow[dow], avail: lookup_map[date_str]}
+      dbg(%{date: date, dow_text: @day_names_by_dow[dow], avail: lookup_map[date_str]})
     end
   end
 
@@ -131,22 +140,9 @@ defmodule MagSked.Courts do
         {:error, _} ->
           :error
 
-        {:ok, avail, %DateWindow{first: f1, last: l1} = new_window} ->
+        {:ok, avail, %DateWindow{} = date_window} ->
           # populate the cache
           :ets.insert(:cache, {court_num, avail})
-
-          date_window =
-            case :ets.lookup(:cache, :date_window) do
-              [] ->
-                new_window
-
-              [date_window: %DateWindow{first: f0, last: l0}] ->
-                %DateWindow{
-                  first: if(Date.after?(f0, f1), do: f0, else: f1),
-                  last: if(Date.after?(l0, l1), do: l0, else: l1)
-                }
-            end
-
           :ets.insert(:cache, {:date_window, date_window})
       end
     end
@@ -217,7 +213,7 @@ defmodule MagSked.Courts do
         post_headers = headers_for_post(get_resp_headers)
 
         intervals =
-          for days <- 1..9, reduce: initial_intervals do
+          for days <- 1..7, reduce: initial_intervals do
             acc ->
               date = Date.add(last_results_day, days)
 
@@ -231,7 +227,12 @@ defmodule MagSked.Courts do
                      headers: post_headers
                    ) do
                 {:ok, %{body: %{"data" => [_ | _] = intervals}}} ->
-                  acc ++ intervals
+                  if days <= 5 || not Enum.all?(intervals, &match?(%{"reservations" => 10}, &1)) do
+                    acc ++ intervals
+                  else
+                    Logger.info("distant date intervals all have 10 reservations, ignoring #{court}, #{date}")
+                    acc
+                  end
 
                 {:ok, other} ->
                   Logger.error("single-day response lacks intervals #{court}, #{date}: #{inspect(other)}")
@@ -254,6 +255,7 @@ defmodule MagSked.Courts do
 
         first_date = sorted_iso_date_strings |> List.first() |> String.split() |> List.first() |> Date.from_iso8601!()
         last_date = sorted_iso_date_strings |> List.last() |> String.split() |> List.first() |> Date.from_iso8601!()
+        dbg(last_date)
 
         {:ok, avail_blocks_by_date(avail_iso_dts), %DateWindow{first: first_date, last: last_date}}
 
@@ -322,9 +324,6 @@ defmodule MagSked.Courts do
   end
 
   def minus_30_min(time) do
-    case String.split(time, ":") do
-      [h, "00"] -> "#{String.pad_leading(Integer.to_string(String.to_integer(h) - 1), 2, "0")}:30"
-      [h, "30"] -> "#{h}:00"
-    end
+    (time <> ":00") |> Time.from_iso8601!() |> Time.shift(minute: -30) |> to_string() |> String.slice(0, 5)
   end
 end
