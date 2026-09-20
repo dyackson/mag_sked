@@ -91,6 +91,10 @@
   --noise: 0;
 }
 
+@source inline("col-start-1..4");
+@source inline("row-start-{{1..24}}");
+@source inline("row-span-{{1..26}}");
+
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);

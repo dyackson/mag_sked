@@ -19,4 +19,14 @@ defmodule MagSkedWeb.PageController do
   end
 
   defp one_week_away, do: "Europe/Lisbon" |> DateTime.now!() |> DateTime.shift(week: 1)
+
+
+
+  @day_begins Time.new(9, 0, 0)
+  def grid_classes(court, span) do
+    [start | _] = span
+    start_row =  start <> ":00" |> Time.from_iso8601!() |> Time.diff(@day_begins, :minute) |> div(30)
+
+    "col-start-#{court + 1} row-start-#{start_row} row-span-#{length(span)}"
+  end
 end

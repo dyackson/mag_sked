@@ -14,10 +14,11 @@ defmodule MagSked.Courts do
   @type span :: [time()]
   @type spans :: [span()]
   @type day :: String.t()
-  @type avail :: %{day() => spans()}
   @type courtn :: 1..3
-  @type court_avail :: %{courtn() => avail()}
-  @type lookup_map :: %{day() => [{time(), %{courtn() => true}}]}
+  @type spans_by_day :: %{day() => spans()}
+  @type spans_by_courtn :: %{courtn() => spans}
+  @type spans_by_day_by_courtn :: %{courtn() => spans_by_day()}
+  @type spans_by_courtn_by_day :: %{day() => spans_by_courtn()}
 
   # called by the supervisor
   def start_link(arg) do
@@ -40,62 +41,40 @@ defmodule MagSked.Courts do
       Logger.error("date window not in db, could not insert into ets")
     end
 
-    send(self(), {:fetch_courts, save_to_db?: true})
+    # send(self(), {:fetch_courts, save_to_db?: true})
 
     {:ok, nil}
   end
 
-  def current do
-    for i <- [1, 2, 3], [{^i, avail}] = :ets.lookup(:cache, i), into: %{} do
-      {i, avail}
+  @spec spans_by_court_by_date(spans_by_day_by_courtn()) :: spans_by_courtn_by_day()
+  def spans_by_court_by_date(court_avail) do
+    for {court, avail_by_date} <- court_avail,
+        {date, spans} <- avail_by_date,
+        reduce: %{} do
+      acc -> put_in(acc, [Access.key(date, %{}), court], spans)
     end
   end
 
-  @spec avail_lookup_map(court_avail()) :: lookup_map()
-  def avail_lookup_map(court_avail) do
-    nested_map =
-      for {court, avail_by_date} <- court_avail,
-          {date, spans} <- avail_by_date,
-          span <- spans,
-          span_length = length(span),
-          {time, span_index} <- Enum.with_index(span),
-          place =
-            (cond do
-               span_index == 0 -> :first
-               span_index == span_length - 1 -> :last
-               true -> :mid
-             end),
-          reduce: %{} do
-        acc -> put_in(acc, [Access.key(date, %{}), Access.key(time, %{}), court], place)
-      end
+  @spec spans_by_court_by_date(spans_by_day_by_courtn()) :: %{day() => MapSet.t(time())}
+  def all_times_by_date(court_avail) do
+    for {_court, avail_by_date} <- court_avail,
+        {date, spans} <- avail_by_date,
+        span <- spans,
+        time <- span,
+        reduce: %{} do
+      %{^date => mapset} = acc ->
+        put_in(acc, [date], MapSet.put(mapset, time))
 
-    # convert the maps that have times as keys to {time, avail} lists so they're ordered
-    for {date, times_map} <- nested_map, into: %{} do
-      sorted_times = Enum.sort_by(times_map, fn {time, _avail} -> time end)
-
-      grouped_reversed_times =
-        for {time, _avail} = curr <- sorted_times, prev_time = minus_30_min(time), reduce: [] do
-          # keep adding to the previous group
-          [[{^prev_time, _} | _] = current_group | earlier_groups] ->
-            [[curr | current_group] | earlier_groups]
-
-          # start a new group
-          list ->
-            [[curr] | list]
-        end
-
-      # have to reverse the nested lists and the outer one
-      grouped_times = grouped_reversed_times |> Enum.map(&Enum.reverse(&1)) |> Enum.reverse()
-
-      {date, grouped_times}
+      acc ->
+        Map.put(acc, date, MapSet.new([time]))
     end
   end
 
-  def possible_times do
-    for h <- 9..21, min <- ["00", "30"] do
-      "#{String.pad_leading(Integer.to_string(h), 2, "0")}:#{min}"
-    end
-  end
+  # def possible_times do
+  #   for h <- 9..21, min <- ["00", "30"] do
+  #     "#{String.pad_leading(Integer.to_string(h), 2, "0")}:#{min}"
+  #   end
+  # end
 
   # 1-indexed starting on monday
   @day_names_by_dow %{
@@ -109,7 +88,12 @@ defmodule MagSked.Courts do
   }
 
   def snapshot do
-    lookup_map = avail_lookup_map(current())
+    spans_by_date_by_court =
+      for i <- [1, 2, 3], [{^i, spans_by_date}] = :ets.lookup(:cache, i), into: %{} do
+        {i, spans_by_date}
+      end
+
+    spans_by_court_by_date = spans_by_court_by_date(spans_by_date_by_court)
 
     date_window =
       case :ets.lookup(:cache, :date_window) do
@@ -128,7 +112,7 @@ defmodule MagSked.Courts do
       date_str = Date.to_string(date)
       dow = Date.day_of_week(date)
 
-      dbg(%{date: date, dow_text: @day_names_by_dow[dow], avail: lookup_map[date_str]})
+      dbg(%{date: date, dow_text: @day_names_by_dow[dow], spans_by_court: spans_by_court_by_date[date_str]})
     end
   end
 
@@ -284,7 +268,7 @@ defmodule MagSked.Courts do
     ...> ]) # <- 18:30 will be filtered out
     %{"2026-08-07" => [["13:30", "14:00"]], "2026-08-08" => [["14:00", "14:30", "15:00"], ["20:00", "20:30"]]}
   """
-  @spec avail_blocks_by_date([String.t()]) :: avail()
+  @spec avail_blocks_by_date([String.t()]) :: spans_by_day()
   def avail_blocks_by_date(avail_iso_dts) do
     avail_times_by_date =
       avail_iso_dts
