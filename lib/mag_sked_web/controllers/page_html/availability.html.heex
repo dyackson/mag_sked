@@ -1,20 +1,20 @@
 <%!-- Rendered both inline on first paint and as the htmx poll response.
       No #availability wrapper: the page container owns that id and htmx
       morphs this in as its innerHTML. --%>
-<div class="max-w-4xl mx-auto space-y-6">
+<div class="max-w-4xl mx-auto space-y-4">
 
 <!-- Court Column Headers -->
     <!-- 4 columns: [1st column = time label gutter (w-16)], [3 equal columns for Courts 1-3] -->
-  <div class="grid grid-cols-[4rem_repeat(3,1fr)] gap-4 px-2">
+  <div class="sticky top-0 z-20 backdrop-blur-md bg-base-100/70 h-10 -mx-2 px-4 border-b border-base-300/40 grid grid-cols-[2rem_repeat(3,1fr)] gap-4 items-center">
     <div></div>
     <!-- Empty spacer for time gutter -->
-    <div class="text-center font-bold text-slate-300 bg-slate-800/80 py-2 rounded-lg border border-slate-700">
+    <div class="text-center text-xs font-semibold uppercase tracking-wider text-base-content/50 py-1">
       Court 1
     </div>
-    <div class="text-center font-bold text-slate-300 bg-slate-800/80 py-2 rounded-lg border border-slate-700">
+    <div class="text-center text-xs font-semibold uppercase tracking-wider text-base-content/50 py-1">
       Court 2
     </div>
-    <div class="text-center font-bold text-slate-300 bg-slate-800/80 py-2 rounded-lg border border-slate-700">
+    <div class="text-center text-xs font-semibold uppercase tracking-wider text-base-content/50 py-1">
       Court 3
     </div>
   </div>
@@ -29,20 +29,30 @@
           row-span-{hours_duration}
       - Unoccupied hours automatically remain as natural empty gaps.
     -->
-  <%= for %{date: date, dow_text: dow, spans_by_court: spans_by_court} <- @snapshot do %>
-    {date} {dow}
-    <div class="relative bg-slate-950/60 rounded-xl border border-slate-800 p-4">
-
-<!-- Background hour guidelines & time labels -->
-      <!-- 10 hours: 8:00 AM to 5:00 PM (10 rows) -->
-      <div class="grid grid-cols-[4rem_repeat(3,1fr)] [grid-auto-rows:16px] gap-x-4">
-        <!-- Row 1: 08:00 -->
-        <%= for h <- 9..22 do %>
-          <div class="text-xs text-slate-500 flex items-start pt-1 font-mono">{h}h</div>
-          <div class="border-t border-slate-800/80 col-span-3"></div>
-          <div class="col-span-4"></div>
-        <% end %>
+  <% dbg(@snapshot) %>
+  <%= for %{date: date, dow_text: dow, spans_by_court: spans_by_court = %{}} <- @snapshot do %>
+    <!-- Parent wrapper for this specific day -->
+    <section class="space-y-2">
+      <div class="sticky top-10 z-10 backdrop-blur-md bg-base-100/70 -mx-2 px-4 py-1.5 flex justify-between items-center border-b border-base-300/30">
+        <span class="font-bold text-base-content">{dow}</span>
+        <span class="font-mono text-xs text-base-content/60">{date}</span>
       </div>
+      <div class="relative bg-base-200/50 rounded-xl border border-base-300 p-4">
+        <!-- Background hour guidelines & time labels -->
+      <!-- 10 hours: 8:00 AM to 5:00 PM (10 rows) -->
+        <div class="grid grid-cols-[2rem_repeat(3,1fr)] [grid-auto-rows:16px] gap-x-4">
+          <!-- Row 1: 08:00 -->
+          <%= for h <- 9..22 do %>
+            <div class={["text-right pr-2 leading-none", h == 22 && "h-0"]}>
+              <span class="text-xs text-base-content/60 -translate-y-1/2 inline-block font-mono">
+                {h}h
+              </span>
+            </div>
+
+            <div class={["border-t border-base-content/10 col-span-3", h == 22 && "h-0"]}></div>
+            <div :if={h < 22} class="col-span-4"></div>
+          <% end %>
+        </div>
 
 <!--
         Court Openings Overlay:
@@ -53,25 +63,41 @@
           col-start-4 = Court 3
           row-start-1 = 8 AM, row-start-2 = 9 AM, etc.
       -->
-      <div class="grid grid-cols-[4rem_repeat(3,1fr)] [grid-auto-rows:16px] gap-x-4 absolute inset-4 pointer-events-none">
+        <div class="grid grid-cols-[2rem_repeat(3,1fr)] [grid-auto-rows:16px] gap-x-4 absolute inset-4 pointer-events-none">
 
 <!-- Court 1: Available 8:00 AM - 9:00 AM (1 hour) -->
-       <%= for {court, spans} <- spans_by_court, [start |_] = span <- spans do %>
-        <%  start_row =  start <> ":00" |> Time.from_iso8601!() |> Time.diff(Time.new!(9, 0, 0), :minute) |> div(30) |> Kernel.+(1) |> dbg() %>
-        <% dbg({date, court, span, start_row}) %>
-        <div class={"pointer-events-auto col-start-#{court + 1} row-start-#{start_row} row-span-#{length(span)} bg-emerald-500/20 border border-emerald-500/60 rounded-lg p-2 flex flex-col justify-between"}>
-        </div>
-       <% end %>
+          <%= for {court, spans} <- spans_by_court, [start |_] = span <- spans do %>
+            <% start_row =
+              (start <> ":00")
+              |> Time.from_iso8601!()
+              |> Time.diff(Time.new!(9, 0, 0), :minute)
+              |> div(30)
+              |> Kernel.+(1)
+              |> dbg() %>
+            <% dbg({date, court, span, start_row}) %>
+            <div class={"pointer-events-auto col-start-#{court + 1} row-start-#{start_row} row-span-#{length(span)} bg-accent/10 border border-accent/60 rounded-lg py flex flex-col justify-between items-center text-[10px] text-accent"}>
+              <div>{start}</div>
+              <div>
+                {List.last(span)
+                |> Kernel.<>(":00")
+                |> Time.from_iso8601!()
+                |> Time.shift(minute: 30)
+                |> to_string()
+                |> String.byte_slice(0, 5)}
+              </div>
+            </div>
+          <% end %>
 
 <!-- Court 1: Available 11:00 AM - 2:00 PM (3 hours) -> Rows 2 and 3 are empty gaps! -->
-        <%!-- <div class="pointer-events-auto col-start-2 row-start-4 row-span-3 m-1 bg-emerald-500/20 border border-emerald-500/60 rounded-lg p-2.5 flex flex-col justify-between"> --%>
+          <%!-- <div class="pointer-events-auto col-start-2 row-start-4 row-span-3 m-1 bg-success/20 border border-success/60 rounded-lg p-2.5 flex flex-col justify-between"> --%>
           <%!-- <div> --%>
-            <%!-- <span class="text-xs font-bold text-emerald-400 block">Available (3h)</span> --%>
-            <%!-- <span class="text-[11px] text-slate-300">Open play block</span> --%>
+          <%!-- <span class="text-xs font-bold text-success block">Available (3h)</span> --%>
+          <%!-- <span class="text-[11px] text-base-content/80">Open play block</span> --%>
           <%!-- </div> --%>
-          <%!-- <span class="text-[10px] text-emerald-300/80">11:00 AM - 2:00 PM</span> --%>
-        <%!-- </div> --%>
+          <%!-- <span class="text-[10px] text-success/80">11:00 AM - 2:00 PM</span> --%>
+          <%!-- </div> --%>
+        </div>
       </div>
-    </div>
+    </section>
   <% end %>
 </div>

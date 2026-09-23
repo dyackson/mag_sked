@@ -41,7 +41,7 @@ defmodule MagSked.Courts do
       Logger.error("date window not in db, could not insert into ets")
     end
 
-    # send(self(), {:fetch_courts, save_to_db?: true})
+    send(self(), {:fetch_courts, save_to_db?: true})
 
     {:ok, nil}
   end
@@ -69,12 +69,6 @@ defmodule MagSked.Courts do
         Map.put(acc, date, MapSet.new([time]))
     end
   end
-
-  # def possible_times do
-  #   for h <- 9..21, min <- ["00", "30"] do
-  #     "#{String.pad_leading(Integer.to_string(h), 2, "0")}:#{min}"
-  #   end
-  # end
 
   # 1-indexed starting on monday
   @day_names_by_dow %{
