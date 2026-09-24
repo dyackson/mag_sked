@@ -2,7 +2,7 @@
       No #availability wrapper: the page container owns that id and htmx
       morphs this in as its innerHTML. --%>
 <div class="max-w-4xl mx-auto space-y-4">
-
+  
 <!-- Court Column Headers -->
     <!-- 4 columns: [1st column = time label gutter (w-16)], [3 equal columns for Courts 1-3] -->
   <div class="sticky top-0 z-20 backdrop-blur-md bg-base-100/70 h-10 -mx-2 px-4 border-b border-base-300/40 grid grid-cols-[2rem_repeat(3,1fr)] gap-4 items-center">
@@ -18,7 +18,7 @@
       Court 3
     </div>
   </div>
-
+  
 <!--
       Schedule Grid Container:
       - 4 columns total: time labels (4rem) + 3 court columns (repeat(3, 1fr)).
@@ -30,7 +30,7 @@
       - Unoccupied hours automatically remain as natural empty gaps.
     -->
   <% dbg(@snapshot) %>
-  <%= for %{date: date, dow_text: dow, spans_by_court: spans_by_court = %{}} <- @snapshot do %>
+  <%= for %{date: date, dow_text: dow, spans_by_court: spans_by_court} <- @snapshot do %>
     <!-- Parent wrapper for this specific day -->
     <section class="space-y-2">
       <div class="sticky top-10 z-10 backdrop-blur-md bg-base-100/70 -mx-2 px-4 py-1.5 flex justify-between items-center border-b border-base-300/30">
@@ -53,7 +53,7 @@
             <div :if={h < 22} class="col-span-4"></div>
           <% end %>
         </div>
-
+        
 <!--
         Court Openings Overlay:
         Placed directly into the exact same grid coordinates.
@@ -64,9 +64,9 @@
           row-start-1 = 8 AM, row-start-2 = 9 AM, etc.
       -->
         <div class="grid grid-cols-[2rem_repeat(3,1fr)] [grid-auto-rows:16px] gap-x-4 absolute inset-4 pointer-events-none">
-
+          
 <!-- Court 1: Available 8:00 AM - 9:00 AM (1 hour) -->
-          <%= for {court, spans} <- spans_by_court, [start |_] = span <- spans do %>
+          <%= for {court, spans} <- spans_by_court || %{}, [start |_] = span <- spans do %>
             <% start_row =
               (start <> ":00")
               |> Time.from_iso8601!()
@@ -87,7 +87,7 @@
               </div>
             </div>
           <% end %>
-
+          
 <!-- Court 1: Available 11:00 AM - 2:00 PM (3 hours) -> Rows 2 and 3 are empty gaps! -->
           <%!-- <div class="pointer-events-auto col-start-2 row-start-4 row-span-3 m-1 bg-success/20 border border-success/60 rounded-lg p-2.5 flex flex-col justify-between"> --%>
           <%!-- <div> --%>
